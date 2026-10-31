@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Terrarium</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the world canvas on the left, an instrument column on the right (controls, population, selected creature), charts and method notes below. Stacks to one column on phones. Single committed dark look, like a lab terminal. */
+:root {
+  --bg: #090d12;
+  --panel: #0f1620;
+  --panel-2: #141f2c;
+  --line: #223142;
+  --fg: #d7e3ee;
+  --muted: #8195a8;
+  --accent: #ffb347;
+  --food: #5eead4;
+  --hazard: #ff5d73;
+  --neg: #e879f9;
+  --display: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.app { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; margin: 0; text-transform: uppercase; }
+h1 span { color: var(--accent); }
+.sub { margin: 2px 0 0; color: var(--muted); max-width: 62ch; }
+.clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+.clock b { color: var(--fg); font-weight: 500; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 1000px) { main { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+.world { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.canvas-wrap { border: 1px solid var(--line); background: #070a0f; position: relative; }
+#world { display: block; width: 100%; aspect-ratio: 960 / 600; cursor: crosshair; touch-action: manipulation; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 12px; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button {
+  font: 500 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg); background: var(--panel-2); border: 1px solid var(--line);
+  padding: 7px 12px; cursor: pointer; border-radius: 3px;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: #1a1205; border-color: var(--accent); }
+button.primary:hover { color: #1a1205; filter: brightness(1.08); }
+aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 14px; min-width: 0; }
+.card h2 { font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
+.stat b { display: block; font-family: var(--display); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.traits { margin-top: 12px; display: grid; gap: 6px; }
+.trait { display: grid; grid-template-columns: 92px minmax(0, 1fr) 48px; gap: 8px; align-items: center; font-size: 12px; }
+.trait .t { height: 6px; background: var(--panel-2); position: relative; }
+.trait .t i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.trait output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ctl { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.row label { color: var(--fg); }
+.row output { color: var(--accent); font-variant-numeric: tabular-nums; }
+.row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.chk { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.chk input { accent-color: var(--accent); margin: 3px 0 0; }
+.chk small { display: block; color: var(--muted); font-size: 11px; line-height: 1.4; }
+#brain { width: 100%; max-width: 100%; aspect-ratio: 300 / 200; display: block; background: #0a1018; border: 1px solid var(--line); }
+.inspect-empty { color: var(--muted); }
+.kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; margin: 10px 0; }
+.kv div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted var(--line); padding: 2px 0; }
+.kv span { color: var(--muted); }
+.kv b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.ebar { height: 6px; background: var(--panel-2); margin: 6px 0 2px; }
+.ebar i { display: block; height: 100%; background: var(--food); width: 0; }
+.cap { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.charts .card canvas { width: 100%; height: 110px; display: block; }
+.charts h2 { display: flex; justify-content: space-between; }
+.charts h2 b { color: var(--fg); font-weight: 500; letter-spacing: 0; }
+.method { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+.method h3 { font-family: var(--display); font-size: 15px; margin: 0 0 4px; color: var(--accent); letter-spacing: 0.04em; }
+.method p { margin: 0; color: var(--muted); }
+.method .tag { display: inline-block; font-size: 11px; color: var(--fg); border: 1px solid var(--line); padding: 0 6px; margin-bottom: 8px; letter-spacing: 0.06em; text-transform: uppercase; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+<style>html,body{margin:0}</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div>
+      <h1>Digital <span>Terrarium</span></h1>
+      <p class="sub">A small closed world. Every creature has a neural-net brain, learns while it lives, and passes its genes on. None of them can sense anything outside the glass.</p>
+    </div>
+    <div class="clock">tick <b id="tick">0</b> &middot; season <b id="season">1</b></div>
+  </header>
+
+  <main>
+    <section class="world">
+      <div class="canvas-wrap"><canvas id="world" width="1440" height="900" aria-label="Simulation world: creatures, food and toxic pools"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#5eead4"></i>food</span>
+        <span><i style="background:#ff5d73"></i>toxic pool</span>
+        <span><i style="background:#ffb347"></i>creature (colour = lineage)</span>
+        <span>Click a creature to look inside its brain.</span>
+      </div>
+      <div class="bar">
+        <button id="btnPlay" class="primary" type="button">Pause</button>
+        <button id="btnFollow" type="button">Follow best forager</button>
+        <button id="btnReset" type="button">New world</button>
+      </div>
+    </section>
+
+    <aside>
+      <section class="card">
+        <h2>Population</h2>
+        <div class="stats">
+          <div class="stat"><b id="sAlive">0</b><span>alive</span></div>
+          <div class="stat"><b id="sGen">0</b><span>top generation</span></div>
+          <div class="stat"><b id="sLife">0</b><span>avg lifespan</span></div>
+          <div class="stat"><b id="sBirths">0</b><span>births</span></div>
+          <div class="stat"><b id="sDeaths">0</b><span>deaths</span></div>
+          <div class="stat"><b id="sEnergy">0</b><span>avg energy</span></div>
+        </div>
+        <div class="traits" id="traits"></div>
+        <p class="cap">Bars show the population's average gene values. Watch them drift as selection acts.</p>
+      </section>
+
+      <section class="card">
+        <h2>Controls</h2>
+        <div class="ctl">
+          <div class="row"><label for="rSpeed">Speed</label><output id="oSpeed">3x</output><input id="rSpeed" type="range" min="1" max="30" step="1" value="3"></div>
+          <div class="row"><label for="rFood">Food regrowth</label><output id="oFood">0.30</output><input id="rFood" type="range" min="0.05" max="0.8" step="0.05" value="0.3"></div>
+          <div class="row"><label for="rMut">Mutation rate</label><output id="oMut">0.08</output><input id="rMut" type="range" min="0" max="0.3" step="0.01" value="0.08"></div>
+          <label class="chk"><input id="cLearn" type="checkbox" checked><span>Learn during life<small>Reinforcement learning (policy gradient with eligibility traces) updates the brain after every meal.</small></span></label>
+          <label class="chk"><input id="cCur" type="checkbox" checked><span>Curiosity reward<small>A small world model predicts what the creature will see next. Surprise pays a bonus.</small></span></label>
+          <label class="chk"><input id="cLam" type="checkbox"><span>Inherit learned weights<small>Off: children start from the genome. On: they also inherit what the parent learned.</small></span></label>
+          <label class="chk"><input id="cSea" type="checkbox" checked><span>Shifting seasons<small>Fertile ground relocates every few thousand ticks, so old habits stop paying off.</small></span></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Inside a creature</h2>
+        <div id="inspectEmpty" class="inspect-empty">No creature selected. Click one in the world, or press Follow best forager.</div>
+        <div id="inspect" hidden>
+          <canvas id="brain" width="600" height="400"></canvas>
+          <p class="cap">Left to right: 5 vision sectors (food, toxic) + energy + 2 memory cells, 12 hidden neurons, then turn, thrust and 2 memory outputs. Cyan is positive, violet is negative.</p>
+          <div class="ebar"><i id="iBar"></i></div>
+          <div class="kv">
+            <div><span>generation</span><b id="iGen">-</b></div>
+            <div><span>age</span><b id="iAge">-</b></div>
+            <div><span>energy</span><b id="iEn">-</b></div>
+            <div><span>meals</span><b id="iEat">-</b></div>
+            <div><span>vision</span><b id="iVis">-</b></div>
+            <div><span>speed</span><b id="iSpd">-</b></div>
+            <div><span>curiosity</span><b id="iCur">-</b></div>
+            <div><span>learn rate</span><b id="iLr">-</b></div>
+          </div>
+          <canvas id="surp" width="600" height="80" style="width:100%;height:40px;display:block"></canvas>
+          <p class="cap" id="iNote">Surprise of its world model over time. It falls as the creature learns how its world behaves.</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <section class="charts">
+    <div class="card"><h2>Population <b id="cPop">0</b></h2><canvas id="chPop" width="600" height="220"></canvas></div>
+    <div class="card"><h2>Mean lifespan (ticks) <b id="cLife">0</b></h2><canvas id="chLife" width="600" height="220"></canvas></div>
+    <div class="card"><h2>Mean vision range (px) <b id="cVis">0</b></h2><canvas id="chVis" width="600" height="220"></canvas></div>
+  </section>
+
+  <section class="method">
+    <div class="card"><span class="tag">Neural network</span><h3>The brain</h3><p>A small feed-forward network with a recurrent memory loop reads the creature's senses and outputs how much to turn and how hard to move. It has 220 weights.</p></div>
+    <div class="card"><span class="tag">Reinforcement learning</span><h3>Learning in a lifetime</h3><p>The creature adds noise to its actions, then nudges its weights toward whatever preceded a reward. Meals pay, toxic pools cost. An eligibility trace spreads credit back over the last few moves.</p></div>
+    <div class="card"><span class="tag">Self-supervised learning</span><h3>Curiosity</h3><p>A linear model predicts the next sensory frame. Its prediction error is the creature's surprise, and surprise earns a small reward scaled by a curiosity gene.</p></div>
+    <div class="card"><span class="tag">Neuroevolution</span><h3>Reproduction</h3><p>A creature with enough energy has a child. Weights and traits are copied with mutation, or mixed with a nearby mate. Less efficient brains starve, so good ones spread.</p></div>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- constants ----------
+const W = 960, H = 600;
+const NI = 13, NH = 12, NO = 4;
+const O_W1 = 0, O_B1 = NH * NI, O_W2 = O_B1 + NH, O_B2 = O_W2 + NO * NH, NW = O_B2 + NO;
+const NT = 5;               // vision, speed, curiosity, learning rate, lineage hue
+const G = NW + NT;
+const NS = 5, FOV = 2.6;    // vision sectors and field of view (radians)
+const PX = NI + 3;          // predictor input size: senses + 2 actions + bias
+const EAT_R = 10, FOOD_R = 4, SIGMA = 0.3, TRACE = 0.92;
+const MAX_AGE = 7000, MIN_POP = 12, MAX_POP = 150, MAX_FOOD = 260;
+const REPRO_E = 160, REPRO_COST = 70, EAT_GAIN = 35;
+const SEASON_LEN = 3500;
+
+const P = { regrow: 0.3, mut: 0.08, learn: true, curious: true, lamarck: false, seasons: true, speed: 3, running: true };
+
+// ---------- helpers ----------
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const wrapD = (d, L) => d > L / 2 ? d - L : d < -L / 2 ? d + L : d;
+const normAng = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+function gauss() { let u = 0; while (u === 0) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random()); }
+const vis = c => 60 + 100 * c.g[NW];
+const spd = c => 0.9 + 1.1 * c.g[NW + 1];
+const cur = c => c.g[NW + 2];
+const lrate = c => 0.003 + 0.037 * c.g[NW + 3];
+
+// ---------- world state ----------
+let S;
+function newWorld() {
+  S = { tick: 0, season: 1, creatures: [], food: [], hazards: [], patches: [], births: 0, deaths: 0, maxGen: 1,
+        recent: [], bestEaten: 0, bestGenome: null, hist: { pop: [], life: [], vis: [] }, selected: null, stats: {} };
+  for (let i = 0; i < 3; i++) S.patches.push({ x: Math.random() * W, y: Math.random() * H, r: 110 });
+  for (let i = 0; i < 4; i++) S.hazards.push({ x: Math.random() * W, y: Math.random() * H, r: 42 });
+  for (let i = 0; i < 90; i++) spawnFood(true);
+  for (let i = 0; i < 40; i++) S.creatures.push(makeCreature(randomGenome(), Math.random() * W, Math.random() * H, 1, 100));
+}
+function spawnFood(force) {
+  if (S.food.length >= MAX_FOOD) return;
+  let x, y;
+  if (Math.random() < 0.8) {
+    const p = S.patches[(Math.random() * S.patches.length) | 0];
+    x = (p.x + gauss() * p.r * 0.55 + W) % W; y = (p.y + gauss() * p.r * 0.55 + H) % H;
+  } else { x = Math.random() * W; y = Math.random() * H; }
+  for (const h of S.hazards) { if (Math.hypot(wrapD(x - h.x, W), wrapD(y - h.y, H)) < h.r) return; }
+  S.food.push({ x, y });
+}
+function randomGenome() {
+  const g = new Float32Array(G);
+  for (let k = 0; k < NW; k++) g[k] = gauss() * 0.6;
+  g[O_B2 + 1] = 0.5;
+  for (let t = 0; t < NT; t++) g[NW + t] = Math.random();
+  return g;
+}
+function makeCreature(g, x, y, gen, energy) {
+  const w = new Float32Array(NW); for (let k = 0; k < NW; k++) w[k] = g[k];
+  return { x, y, a: Math.random() * 2 * Math.PI, e: energy, age: 0, gen, g, w, tr: new Float32Array(NW),
+    mem: [0, 0], inp: new Float32Array(NI), h: new Float32Array(NH), out: new Float32Array(NO), eps: [0, 0],
+    pW: new Float32Array(10 * PX), px: new Float32Array(PX), pred: new Float32Array(10), hasPred: false,
+    base: 0, eaten: 0, surprise: 0, sHist: [], dead: false, r: 0 };
+}
+function mutate(src, rate) {
+  const g = new Float32Array(G);
+  for (let k = 0; k < NW; k++) { g[k] = src[k]; if (Math.random() < rate) g[k] = clamp(g[k] + gauss() * 0.25, -3, 3); }
+  for (let t = 0; t < NT - 1; t++) { g[NW + t] = src[NW + t]; if (Math.random() < Math.min(1, rate * 3)) g[NW + t] = clamp(g[NW + t] + gauss() * 0.08, 0, 1); }
+  g[NW + 4] = (src[NW + 4] + gauss() * 0.012 + 1) % 1;
+  return g;
+}
+function crossover(a, b) {
+  const g = new Float32Array(G);
+  for (let k = 0; k < G; k++) g[k] = Math.random() < 0.5 ? a[k] : b[k];
+  return g;
+}
+
+// ---------- perception ----------
+function sense(c) {
+  const inp = c.inp; inp.fill(0);
+  const range = vis(c), lim = range + FOOD_R;
+  const half = FOV / 2;
+  const f = S.food;
+  for (let i = 0; i < f.length; i++) {
+    const dx = wrapD(f[i].x - c.x, W); if (dx > lim || dx < -lim) continue;
+    const dy = wrapD(f[i].y - c.y, H); if (dy > lim || dy < -lim) continue;
+    const d = Math.sqrt(dx * dx + dy * dy); if (d > lim) continue;
+    const ang = normAng(Math.atan2(dy, dx) - c.a); if (ang > half || ang < -half) continue;
+    const s = Math.min(NS - 1, Math.floor((ang + half) / FOV * NS));
+    const v = 1 - Math.max(0, d - FOOD_R) / range;
+    if (v > inp[s * 2]) inp[s * 2] = v;
+  }
+  for (const hz of S.hazards) {
+    const dx = wrapD(hz.x - c.x, W), dy = wrapD(hz.y - c.y, H);
+    const d = Math.sqrt(dx * dx + dy * dy), edge = d - hz.r;
+    if (edge > range) continue;
+    const v = 1 - Math.max(0, edge) / range;
+    const ang = normAng(Math.atan2(dy, dx) - c.a);
+    const hw = d > hz.r ? Math.asin(Math.min(1, hz.r / d)) : Math.PI;
+    for (let s = 0; s < NS; s++) {
+      const sc = -half + (s + 0.5) * FOV / NS;
+      if (Math.abs(normAng(sc - ang)) <= hw + FOV / NS / 2 && v > inp[s * 2 + 1]) inp[s * 2 + 1] = v;
+    }
+  }
+  inp[10] = clamp(c.e / 200, 0, 1.5);
+  inp[11] = c.mem[0]; inp[12] = c.mem[1];
+}
+
+// ---------- brain ----------
+function think(c) {
+  const w = c.w, inp = c.inp, h = c.h, out = c.out;
+  for (let j = 0; j < NH; j++) {
+    let s = w[O_B1 + j]; const b = O_W1 + j * NI;
+    for (let i = 0; i < NI; i++) s += w[b + i] * inp[i];
+    h[j] = Math.tanh(s);
+  }
+  for (let o = 0; o < NO; o++) {
+    let s = w[O_B2 + o]; const b = O_W2 + o * NH;
+    for (let j = 0; j < NH; j++) s += w[b + j] * h[j];
+    out[o] = Math.tanh(s);
+  }
+}
+
+// ---------- one creature, one tick ----------
+function update(c, births) {
+  c.age++;
+  sense(c);
+
+  // world model: compare last prediction with what is seen now
+  let curiosityR = 0;
+  if (c.hasPred) {
+    let se = 0;
+    for (let k = 0; k < 10; k++) {
+      const err = c.inp[k] - c.pred[k]; se += err * err;
+      const b = k * PX; for (let m = 0; m < PX; m++) c.pW[b + m] += 0.02 * err * c.px[m];
+    }
+    c.surprise = Math.sqrt(se / 10);
+    if (P.curious) curiosityR = cur(c) * Math.min(0.6, c.surprise) * 0.25;
+  }
+
+  think(c);
+  const explore = P.learn;
+  const e0 = explore ? gauss() * SIGMA : 0, e1 = explore ? gauss() * SIGMA : 0;
+  c.eps[0] = e0; c.eps[1] = e1;
+  const a0 = clamp(c.out[0] + e0, -1, 1), a1 = clamp(c.out[1] + e1, -1, 1);
+  c.mem[0] = c.out[2]; c.mem[1] = c.out[3];
+
+  // prediction for next tick
+  for (let i = 0; i < NI; i++) c.px[i] = c.inp[i];
+  c.px[NI] = a0; c.px[NI + 1] = a1; c.px[NI + 2] = 1;
+  for (let k = 0; k < 10; k++) { let s = 0; const b = k * PX; for (let m = 0; m < PX; m++) s += c.pW[b + m] * c.px[m]; c.pred[k] = s; }
+  c.hasPred = true;
+
+  // act
+  c.a += a0 * 0.18;
+  const thrust = (a1 + 1) / 2 * spd(c);
+  c.x = (c.x + Math.cos(c.a) * thrust + W) % W;
+  c.y = (c.y + Math.sin(c.a) * thrust + H) % H;
+  c.e -= 0.04 + vis(c) * 0.0004 + thrust * thrust * 0.045;
+
+  let reward = curiosityR;
+  const f = S.food;
+  for (let i = 0; i < f.length; i++) {
+    const dx = wrapD(f[i].x - c.x, W); if (dx > EAT_R || dx < -EAT_R) continue;
+    const dy = wrapD(f[i].y - c.y, H); if (dy > EAT_R || dy < -EAT_R) continue;
+    if (dx * dx + dy * dy < EAT_R * EAT_R) {
+      f[i] = f[f.length - 1]; f.pop();
+      c.e = Math.min(c.e + EAT_GAIN, 220); c.eaten++; reward += 1; break;
+    }
+  }
+  for (const hz of S.hazards) {
+    const dx = wrapD(hz.x - c.x, W), dy = wrapD(hz.y - c.y, H);
+    if (dx * dx + dy * dy < hz.r * hz.r) { c.e -= 0.6; reward -= 0.15; }
+  }
+
+  // learn: policy gradient with eligibility traces
+  if (P.learn) {
+    const tr = c.tr, w = c.w, h = c.h, inp = c.inp;
+    for (let k = 0; k < NW; k++) tr[k] *= TRACE;
+    const go0 = e0 * (1 - c.out[0] * c.out[0]), go1 = e1 * (1 - c.out[1] * c.out[1]);
+    tr[O_B2] += go0; tr[O_B2 + 1] += go1;
+    for (let j = 0; j < NH; j++) {
+      tr[O_W2 + j] += go0 * h[j]; tr[O_W2 + NH + j] += go1 * h[j];
+      const dh = (go0 * w[O_W2 + j] + go1 * w[O_W2 + NH + j]) * (1 - h[j] * h[j]);
+      tr[O_B1 + j] += dh;
+      const b = O_W1 + j * NI; for (let i = 0; i < NI; i++) tr[b + i] += dh * inp[i];
+    }
+    const adv = clamp(reward - c.base, -1, 1);
+    c.base += 0.02 * (reward - c.base);
+    if (adv > 0.02 || adv < -0.02) {
+      const lr = lrate(c) * adv;
+      for (let k = 0; k < NW; k++) w[k] = clamp(w[k] + lr * tr[k], -3, 3);
+    }
+  }
+  c.r = reward;
+  if (c === S.selected && (c.age & 3) === 0) { c.sHist.push(c.surprise); if (c.sHist.length > 150) c.sHist.shift(); }
+
+  // death and birth
+  if (c.e <= 0 || c.age > MAX_AGE) { c.dead = true; return; }
+  if (c.e >= REPRO_E && c.age > 150 && S.creatures.length + births.length < MAX_POP) {
+    let mate = null, md = 45 * 45;
+    for (const o of S.creatures) {
+      if (o === c || o.dead || o.e < 90) continue;
+      const dx = wrapD(o.x - c.x, W), dy = wrapD(o.y - c.y, H), d2 = dx * dx + dy * dy;
+      if (d2 < md) { md = d2; mate = o; }
+    }
+    const pg = P.lamarck ? lamarckGenome(c) : c.g;
+    let cg = mate ? crossover(pg, P.lamarck ? lamarckGenome(mate) : mate.g) : pg;
+    cg = mutate(cg, P.mut);
+    c.e -= REPRO_COST;
+    if (mate) mate.e -= 15;
+    births.push(makeCreature(cg, (c.x + gauss() * 8 + W) % W, (c.y + gauss() * 8 + H) % H, Math.max(c.gen, mate ? mate.gen : 0) + 1, 60));
+    S.births++;
+  }
+}
+function lamarckGenome(c) { const g = new Float32Array(G); g.set(c.w, 0); g.set(c.g.subarray(NW), NW); return g; }
+
+function step() {
+  S.tick++;
+  if (Math.random() < P.regrow) spawnFood();
+  if (P.regrow > 0.5 && Math.random() < P.regrow - 0.5) spawnFood();
+  if (P.seasons && S.tick % SEASON_LEN === 0) {
+    S.season++;
+    const p = S.patches[(Math.random() * S.patches.length) | 0];
+    p.x = Math.random() * W; p.y = Math.random() * H;
+    const hz = S.hazards[(Math.random() * S.hazards.length) | 0];
+    hz.x = Math.random() * W; hz.y = Math.random() * H;
+  }
+  const births = [];
+  const list = S.creatures;
+  for (let i = 0; i < list.length; i++) if (!list[i].dead) update(list[i], births);
+  let n = 0;
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (c.dead) {
+      S.deaths++; S.recent.push(c.age); if (S.recent.length > 40) S.recent.shift();
+      if (c.eaten > S.bestEaten) { S.bestEaten = c.eaten; S.bestGenome = c.g; }
+      if (c === S.selected) { S.selected.gone = true; }
+    } else list[n++] = c;
+  }
+  list.length = n;
+  for (const b of births) { list.push(b); if (b.gen > S.maxGen) S.maxGen = b.gen; }
+  if (list.length < MIN_POP && S.tick % 20 === 0) {
+    const g = S.bestGenome && Math.random() < 0.6 ? mutate(S.bestGenome, 0.15) : randomGenome();
+    list.push(makeCreature(g, Math.random() * W, Math.random() * H, 1, 100));
+  }
+  if (S.tick % 50 === 0) recordStats();
+}
+
+function recordStats() {
+  const L = S.creatures, n = L.length || 1;
+  let e = 0; const t = [0, 0, 0, 0];
+  for (const c of L) { e += c.e; for (let k = 0; k < 4; k++) t[k] += c.g[NW + k]; }
+  S.stats = { alive: L.length, energy: e / n, traits: t.map(v => v / n),
+    life: S.recent.length ? S.recent.reduce((a, b) => a + b, 0) / S.recent.length : 0 };
+  const hh = S.hist, mv = 60 + 100 * S.stats.traits[0];
+  hh.pop.push(L.length); hh.life.push(S.stats.life); hh.vis.push(mv);
+  for (const k of ['pop', 'life', 'vis']) if (hh[k].length > 400) hh[k].shift();
+}
+
+// ---------- rendering ----------
+const cv = document.getElementById('world'), ctx = cv.getContext('2d');
+const K = cv.width / W;
+function hsl(h, s, l, a) { return `hsla(${(h * 360) | 0},${s}%,${l}%,${a})`; }
+function drawWorld() {
+  ctx.setTransform(K, 0, 0, K, 0, 0);
+  ctx.fillStyle = '#070a0f'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(94,140,180,0.07)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= W; x += 60) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = 0; y <= H; y += 60) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+  for (const p of S.patches) {
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 1.3);
+    g.addColorStop(0, 'rgba(94,234,212,0.10)'); g.addColorStop(1, 'rgba(94,234,212,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.3, 0, 7); ctx.fill();
+  }
+  for (const h of S.hazards) {
+    const g = ctx.createRadialGradient(h.x, h.y, h.r * 0.2, h.x, h.y, h.r);
+    g.addColorStop(0, 'rgba(255,93,115,0.05)'); g.addColorStop(1, 'rgba(255,93,115,0.28)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,93,115,0.7)'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.fillStyle = '#5eead4';
+  ctx.beginPath();
+  for (const f of S.food) { ctx.moveTo(f.x + 2.6, f.y); ctx.arc(f.x, f.y, 2.6, 0, 7); }
+  ctx.fill();
+
+  const sel = S.selected;
+  for (const c of S.creatures) {
+    const hue = c.g[NW + 4], en = clamp(c.e / 200, 0.15, 1);
+    ctx.fillStyle = hsl(hue, 75, 38 + 28 * en, 1);
+    ctx.beginPath(); ctx.arc(c.x, c.y, 5.5, 0, 7); ctx.fill();
+    ctx.strokeStyle = hsl(hue, 80, 80, 0.95); ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x + Math.cos(c.a) * 10, c.y + Math.sin(c.a) * 10); ctx.stroke();
+  }
+  if (sel && !sel.gone) {
+    const r = vis(sel);
+    ctx.fillStyle = 'rgba(255,179,71,0.07)'; ctx.strokeStyle = 'rgba(255,179,71,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sel.x, sel.y); ctx.arc(sel.x, sel.y, r, sel.a - FOV / 2, sel.a + FOV / 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sel.x, sel.y, 11, 0, 7); ctx.stroke();
+  }
+}
+
+const bcv = document.getElementById('brain'), bctx = bcv.getContext('2d');
+function actColor(v, scale) {
+  const m = Math.min(1, Math.abs(v) * (scale || 1));
+  return v >= 0 ? `rgba(94,234,212,${0.12 + 0.88 * m})` : `rgba(232,121,249,${0.12 + 0.88 * m})`;
+}
+function drawBrain(c) {
+  const k = bcv.width / 300; bctx.setTransform(k, 0, 0, k, 0, 0);
+  bctx.fillStyle = '#0a1018'; bctx.fillRect(0, 0, 300, 200);
+  const xs = [26, 125, 224];
+  const ys = (n, i) => 14 + (i + 0.5) * (172 / n);
+  const w = c.w;
+  bctx.lineWidth = 1;
+  for (let j = 0; j < NH; j++) for (let i = 0; i < NI; i++) {
+    const v = w[O_W1 + j * NI + i]; if (Math.abs(v) < 0.7) continue;
+    bctx.strokeStyle = actColor(v, 0.5).replace(/[\d.]+\)$/, (Math.min(1, Math.abs(v) / 3) * 0.55 + 0.05) + ')');
+    bctx.beginPath(); bctx.moveTo(xs[0], ys(NI, i)); bctx.lineTo(xs[1], ys(NH, j)); bctx.stroke();
+  }
+  for (let o = 0; o < NO; o++) for (let j = 0; j < NH; j++) {
+    const v = w[O_W2 + o * NH + j]; if (Math.abs(v) < 0.7) continue;
+    bctx.strokeStyle = actColor(v, 0.5).replace(/[\d.]+\)$/, (Math.min(1, Math.abs(v) / 3) * 0.55 + 0.05) + ')');
+    bctx.beginPath(); bctx.moveTo(xs[1], ys(NH, j)); bctx.lineTo(xs[2], ys(NO, o)); bctx.stroke();
+  }
+  const node = (x, y, v, r) => { bctx.fillStyle = actColor(v, 1); bctx.strokeStyle = '#2b3d50'; bctx.beginPath(); bctx.arc(x, y, r, 0, 7); bctx.fill(); bctx.stroke(); };
+  for (let i = 0; i < NI; i++) node(xs[0], ys(NI, i), c.inp[i], 4.2);
+  for (let j = 0; j < NH; j++) node(xs[1], ys(NH, j), c.h[j], 4.6);
+  for (let o = 0; o < NO; o++) node(xs[2], ys(NO, o), c.out[o], 6);
+  bctx.fillStyle = '#8195a8'; bctx.font = '9px IBM Plex Mono, monospace'; bctx.textBaseline = 'middle';
+  ['turn', 'thrust', 'mem 1', 'mem 2'].forEach((t, o) => bctx.fillText(t, xs[2] + 11, ys(NO, o)));
+}
+const scv = document.getElementById('surp'), sctx = scv.getContext('2d');
+function drawSurprise(c) {
+  const w = scv.width, h = scv.height; sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.fillStyle = '#0a1018'; sctx.fillRect(0, 0, w, h);
+  const a = c.sHist; if (a.length < 2) return;
+  const mx = Math.max(0.05, ...a);
+  sctx.strokeStyle = '#ffb347'; sctx.lineWidth = 2; sctx.beginPath();
+  a.forEach((v, i) => { const x = i / 149 * w, y = h - 6 - (v / mx) * (h - 12); i ? sctx.lineTo(x, y) : sctx.moveTo(x, y); });
+  sctx.stroke();
+}
+function drawChart(id, data, color) {
+  const cvs = document.getElementById(id), g = cvs.getContext('2d'), w = cvs.width, h = cvs.height;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(94,140,180,0.14)'; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, h * i / 4); g.lineTo(w, h * i / 4); g.stroke(); }
+  if (data.length < 2) return;
+  let mn = Math.min(...data), mx = Math.max(...data); if (mx - mn < 1e-6) { mx += 1; mn -= 1; }
+  const pad = 14, X = i => i / (data.length - 1) * (w - 12) + 4, Y = v => h - pad - (v - mn) / (mx - mn) * (h - pad * 2);
+  g.beginPath(); data.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)));
+  g.strokeStyle = color; g.lineWidth = 2.5; g.stroke();
+  g.lineTo(X(data.length - 1), h); g.lineTo(X(0), h); g.closePath(); g.fillStyle = color.replace('1)', '0.12)'); g.fill();
+  const lx = X(data.length - 1), ly = Y(data[data.length - 1]);
+  g.fillStyle = color; g.beginPath(); g.arc(lx - 3, ly, 4, 0, 7); g.fill();
+  g.fillStyle = '#8195a8'; g.font = '20px IBM Plex Mono, monospace';
+  g.textBaseline = 'top'; g.fillText(Math.round(mx), 6, 4);
+  g.textBaseline = 'bottom'; g.fillText(Math.round(mn), 6, h - 4);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const traitDefs = [['Vision', c => 60 + 100 * c, v => Math.round(v) + 'px'], ['Speed', c => 0.9 + 1.1 * c, v => v.toFixed(2)],
+  ['Curiosity', c => c, v => v.toFixed(2)], ['Learn rate', c => 0.003 + 0.037 * c, v => v.toFixed(3)]];
+$('traits').innerHTML = traitDefs.map((t, i) => `<div class="trait"><span>${t[0]}</span><span class="t"><i id="tb${i}"></i></span><output id="tv${i}">-</output></div>`).join('');
+const fmt = n => Math.round(n).toLocaleString();
+function refreshUI() {
+  $('tick').textContent = fmt(S.tick); $('season').textContent = S.season;
+  const st = S.stats; if (!st.traits) return;
+  $('sAlive').textContent = st.alive; $('sGen').textContent = S.maxGen; $('sLife').textContent = fmt(st.life);
+  $('sBirths').textContent = fmt(S.births); $('sDeaths').textContent = fmt(S.deaths); $('sEnergy').textContent = fmt(st.energy);
+  traitDefs.forEach((t, i) => { $('tb' + i).style.width = (st.traits[i] * 100).toFixed(0) + '%'; $('tv' + i).textContent = t[2](t[1](st.traits[i])); });
+  $('cPop').textContent = st.alive; $('cLife').textContent = fmt(st.life); $('cVis').textContent = Math.round(60 + 100 * st.traits[0]);
+  drawChart('chPop', S.hist.pop, 'rgba(255,179,71,1)');
+  drawChart('chLife', S.hist.life, 'rgba(94,234,212,1)');
+  drawChart('chVis', S.hist.vis, 'rgba(232,121,249,1)');
+}
+function refreshInspect() {
+  const c = S.selected, on = !!c;
+  $('inspect').hidden = !on; $('inspectEmpty').hidden = on;
+  if (!on) return;
+  if (c.gone) { $('iNote').textContent = 'This creature has died. Select another to keep watching.'; }
+  else { $('iNote').textContent = 'Surprise of its world model over time. It falls as the creature learns how its world behaves.'; }
+  $('iGen').textContent = c.gen; $('iAge').textContent = fmt(c.age); $('iEn').textContent = Math.max(0, Math.round(c.e));
+  $('iEat').textContent = c.eaten; $('iVis').textContent = Math.round(vis(c)) + 'px'; $('iSpd').textContent = spd(c).toFixed(2);
+  $('iCur').textContent = cur(c).toFixed(2); $('iLr').textContent = lrate(c).toFixed(3);
+  $('iBar').style.width = clamp(c.e / 200 * 100, 0, 100) + '%';
+  drawBrain(c); drawSurprise(c);
+}
+function select(c) { S.selected = c; if (c && !c.sHist) c.sHist = []; refreshInspect(); }
+
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  let best = null, bd = 22 * 22;
+  for (const c of S.creatures) { const dx = wrapD(c.x - x, W), dy = wrapD(c.y - y, H), d = dx * dx + dy * dy; if (d < bd) { bd = d; best = c; } }
+  if (best) select(best);
+});
+$('btnPlay').addEventListener('click', () => { P.running = !P.running; $('btnPlay').textContent = P.running ? 'Pause' : 'Play'; });
+$('btnReset').addEventListener('click', () => { newWorld(); recordStats(); select(null); refreshUI(); });
+$('btnFollow').addEventListener('click', () => {
+  let best = null; for (const c of S.creatures) if (!best || c.eaten > best.eaten) best = c;
+  if (best) select(best);
+});
+const bind = (id, out, key, f) => $(id).addEventListener('input', e => { P[key] = f(e.target.value); $(out).textContent = P[key].toFixed ? (key === 'speed' ? P[key] + 'x' : P[key].toFixed(2)) : P[key]; });
+bind('rSpeed', 'oSpeed', 'speed', v => +v); bind('rFood', 'oFood', 'regrow', v => +v); bind('rMut', 'oMut', 'mut', v => +v);
+$('cLearn').addEventListener('change', e => P.learn = e.target.checked);
+$('cCur').addEventListener('change', e => P.curious = e.target.checked);
+$('cLam').addEventListener('change', e => P.lamarck = e.target.checked);
+$('cSea').addEventListener('change', e => P.seasons = e.target.checked);
+
+// ---------- loop ----------
+newWorld(); recordStats();
+let frame = 0;
+function loop() {
+  if (P.running) {
+    const t0 = performance.now();
+    for (let i = 0; i < P.speed && performance.now() - t0 < 14; i++) step();
+  }
+  drawWorld();
+  if ((frame++ % 6) === 0) { refreshUI(); }
+  if (S.selected) { if (frame % 2 === 0) refreshInspect(); }
+  requestAnimationFrame(loop);
+}
+refreshUI();
+requestAnimationFrame(loop);
+
+window.__terrarium = { step: n => { for (let i = 0; i < n; i++) step(); }, state: () => S, params: P, newWorld, recordStats,
+  nanCheck: () => S.creatures.some(c => c.w.some(v => !Number.isFinite(v))) };
+})();
+</script>
+
+</body>
+</html>
