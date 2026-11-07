@@ -1,0 +1,508 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Swarm Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the arena canvas on the left with the swarm at work; an instrument column on the right (task, brain, controls, training chart). Method notes underneath. Single committed dark lab-terminal look. */
+:root {
+  --bg: #080c11;
+  --panel: #0e1520;
+  --panel-2: #131e2b;
+  --line: #213043;
+  --fg: #d5e1ec;
+  --muted: #8093a6;
+  --accent: #ffb347;
+  --teal: #5eead4;
+  --bad: #ff6b7d;
+  --display: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.app { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header h1 { font-family: var(--display); font-weight: 700; font-size: 28px; letter-spacing: .02em; margin: 0; text-transform: uppercase; }
+header h1 span { color: var(--accent); }
+.sub { margin: 2px 0 0; color: var(--muted); max-width: 72ch; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 1020px) { main { grid-template-columns: minmax(0, 1fr) 350px; align-items: start; } .stage { position: sticky; top: 12px; } }
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cv { border: 1px solid var(--line); background: #060a0f; position: relative; }
+#arena { display: block; width: 100%; aspect-ratio: 800 / 500; cursor: crosshair; touch-action: manipulation; }
+.badge { position: absolute; left: 10px; top: 8px; font-size: 12px; color: var(--muted); pointer-events: none; font-variant-numeric: tabular-nums; }
+.badge b { color: var(--fg); font-weight: 500; }
+.result { position: absolute; right: 10px; top: 8px; font-family: var(--display); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; pointer-events: none; }
+.result.ok { color: var(--teal); } .result.no { color: var(--bad); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 12px; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 14px; min-width: 0; }
+.card h2 { font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+button { font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); padding: 7px 12px; cursor: pointer; border-radius: 3px; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.on { border-color: var(--accent); color: var(--accent); background: #2a2010; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #1a1205; }
+button.primary:hover { color: #1a1205; filter: brightness(1.08); }
+button:disabled { opacity: .5; cursor: default; }
+.tasks { display: grid; gap: 8px; }
+.tasks button { text-align: left; text-transform: none; letter-spacing: 0; padding: 9px 10px; }
+.tasks button b { display: block; font-family: var(--display); letter-spacing: .06em; text-transform: uppercase; font-size: 13px; }
+.tasks button span { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.4; margin-top: 2px; }
+.tasks button.on span { color: #d8b784; }
+.seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.seg button { padding: 7px 4px; text-align: center; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; margin-top: 10px; }
+.row output { color: var(--accent); font-variant-numeric: tabular-nums; }
+.row input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; }
+.stats div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted var(--line); padding: 2px 0; }
+.stats span { color: var(--muted); } .stats b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.cap { color: var(--muted); font-size: 11px; margin: 8px 0 0; }
+#chart { width: 100%; height: 130px; display: block; }
+.method { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+.method h3 { font-family: var(--display); font-size: 15px; margin: 0 0 4px; color: var(--accent); letter-spacing: .04em; }
+.method p { margin: 0; color: var(--muted); }
+.method .tag { display: inline-block; font-size: 11px; color: var(--fg); border: 1px solid var(--line); padding: 0 6px; margin-bottom: 8px; letter-spacing: .06em; text-transform: uppercase; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Swarm <span>Lab</span></h1>
+    <p class="sub">Dozens of identical tiny bots share one small neural-net brain. Each bot sees only its own surroundings, yet the swarm moves heavy loads, builds relay chains and forms rings. Pick a job, then watch the swarm do it or teach it from scratch.</p>
+  </header>
+
+  <main>
+    <section class="stage">
+      <div class="cv">
+        <canvas id="arena" width="1200" height="750" aria-label="Swarm arena"></canvas>
+        <div class="badge" id="badge"></div>
+        <div class="result" id="result"></div>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="legend"><span id="clickHint"></span></div>
+    </section>
+
+    <aside>
+      <section class="card">
+        <h2>Job</h2>
+        <div class="tasks" id="tasks">
+          <button type="button" data-task="transport"><b>Transport</b><span>A heavy block needs about five bots pushing the same way before it moves. Get it to the goal.</span></button>
+          <button type="button" data-task="bridge"><b>Bridge</b><span>Two towers are too far apart to talk. The bots must form a relay chain from one to the other.</span></button>
+          <button type="button" data-task="surround"><b>Surround</b><span>Form an even ring around a target. Each bot senses only its two neighbours on the ring.</span></button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Brain</h2>
+        <div class="seg" id="brains">
+          <button type="button" data-brain="none">Untrained</button>
+          <button type="button" data-brain="pre" class="on">Trained</button>
+          <button type="button" data-brain="mine">Yours</button>
+        </div>
+        <div class="bar">
+          <button type="button" id="btnLearn" class="primary">Teach from scratch</button>
+          <button type="button" id="btnStop" disabled>Stop teaching</button>
+        </div>
+        <canvas id="chart" width="640" height="260" aria-label="Training progress"></canvas>
+        <p class="cap" id="trainNote">Teaching runs in the background. The arena switches to your brain and you can watch it improve.</p>
+      </section>
+
+      <section class="card">
+        <h2>Run</h2>
+        <div class="row"><label for="rN">Swarm size</label><output id="oN">20</output><input id="rN" type="range" min="8" max="40" step="1" value="20"></div>
+        <div class="row"><label for="rS">Speed</label><output id="oS">2x</output><input id="rS" type="range" min="1" max="8" step="1" value="2"></div>
+        <div class="bar"><button type="button" id="btnNew">New layout</button><button type="button" id="btnPause">Pause</button></div>
+        <div class="stats" style="margin-top:12px" id="stats"></div>
+      </section>
+    </aside>
+  </main>
+
+  <section class="method">
+    <div class="card"><span class="tag">Shared policy</span><h3>One brain, many bots</h3><p>Every bot runs the same 14-neuron network on its own local view. Nobody is in charge and nobody sees the whole picture.</p></div>
+    <div class="card"><span class="tag">Neuroevolution</span><h3>How it was taught</h3><p>An evolution strategy tries many small random changes to the brain, keeps what scored better, and repeats. The trained brains here took 30 to 150 rounds.</p></div>
+    <div class="card"><span class="tag">Teamwork by design</span><h3>Why one bot is not enough</h3><p>The block will not move under fewer than about five aligned pushes. The towers are out of radio range of each other. A ring needs spacing between bots.</p></div>
+    <div class="card"><span class="tag">Limits</span><h3>Honest notes</h3><p>Trained at 20 bots. Other sizes work to a degree: Bridge needs around 16 or more bots to reach across. This is a flat 2D toy, not a physics-accurate robot model.</p></div>
+  </section>
+</div>
+
+<script id="coreSrc">
+// Swarm core: physics, three team tasks, a shared neural policy and an evolution-strategy trainer.
+// Works in the browser and in Node (module.exports guard at the bottom).
+const W = 800, H = 500, BOT_R = 5, MAXV = 2.6;
+const HID = 14;
+const TASKS = {
+  transport: { nin: 12, steps: 600, label: 'Transport', link: 0 },
+  bridge: { nin: 15, steps: 500, label: 'Bridge', link: 95 },
+  surround: { nin: 6, steps: 400, label: 'Surround', link: 0 },
+};
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function gauss(r) { let u = 0; while (u === 0) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+// ---------- the shared brain: every bot runs the same small network ----------
+function paramCount(nin) { return HID * nin + HID + 2 * HID + 2; }
+function initParams(nin, r) { const p = new Float32Array(paramCount(nin)); for (let i = 0; i < p.length; i++) p[i] = gauss(r) * 0.3; return p; }
+function forward(p, nin, x, out) {
+  const o2 = HID * nin + HID, o3 = o2 + 2 * HID;
+  const h = forward._h || (forward._h = new Float32Array(64));
+  for (let j = 0; j < HID; j++) { let s = p[HID * nin + j]; const b = j * nin; for (let i = 0; i < nin; i++) s += p[b + i] * x[i]; h[j] = Math.tanh(s); }
+  for (let o = 0; o < 2; o++) { let s = p[o3 + o]; for (let j = 0; j < HID; j++) s += p[o2 + o * HID + j] * h[j]; out[o] = Math.tanh(s); }
+}
+
+// ---------- environment ----------
+class Env {
+  constructor(task, n, seed, opt) { this.task = task; this.n = n; this.opt = opt || {}; this.seed = seed; this.reset(); }
+  reset() {
+    const r = this.r = mulberry32(this.seed), n = this.n, o = this.opt;
+    this.t = 0; this.score = 0; this.success = false; this.done = false; this.tSuccess = -1;
+    this.x = new Float32Array(n); this.y = new Float32Array(n); this.vx = new Float32Array(n); this.vy = new Float32Array(n);
+    this.ax = new Float32Array(n); this.ay = new Float32Array(n);
+    this.fu = new Float32Array(n); this.fv = new Float32Array(n);   // frame axes (unit u = (fux,fuy)) stored per bot
+    this.fux = new Float32Array(n); this.fuy = new Float32Array(n);
+    this.touch = new Uint8Array(n); this.conn = new Uint8Array(n); this.hop = new Int16Array(n);
+    this.obsBuf = new Float32Array(TASKS[this.task].nin);
+    if (this.task === 'transport') {
+      this.bR = 24; this.bx = o.block ? o.block.x : 120 + r() * 100; this.by = o.block ? o.block.y : 110 + r() * 280;
+      this.gx = o.goal ? o.goal.x : 540 + r() * 180; this.gy = o.goal ? o.goal.y : 90 + r() * 320;
+      this.bvx = 0; this.bvy = 0; this.d0 = Math.hypot(this.gx - this.bx, this.gy - this.by); this.prevD = this.d0; this.touchSum = 0;
+      for (let i = 0; i < n; i++) this.placeFree(i, 0, W, 0, H);
+    } else if (this.task === 'bridge') {
+      this.Ax = o.A ? o.A.x : 60; this.Ay = o.A ? o.A.y : 150 + r() * 200;
+      this.Bx = o.B ? o.B.x : 740; this.By = o.B ? o.B.y : 150 + r() * 200;
+      this.L = TASKS.bridge.link; this.len = Math.hypot(this.Bx - this.Ax, this.By - this.Ay);
+      this.ux = (this.Bx - this.Ax) / this.len; this.uy = (this.By - this.Ay) / this.len; this.cov = 0;
+      for (let i = 0; i < n; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * 45; this.x[i] = clamp(this.Ax + Math.cos(a) * d + 30, 8, W - 8); this.y[i] = clamp(this.Ay + Math.sin(a) * d, 8, H - 8); }
+    } else {
+      this.cx = o.center ? o.center.x : 300 + r() * 200; this.cy = o.center ? o.center.y : 190 + r() * 120; this.ringR = o.ringR || 110; this.cov = 0;
+      for (let i = 0; i < n; i++) { do { this.x[i] = 20 + r() * (W - 40); this.y[i] = 20 + r() * (H - 40); } while (Math.hypot(this.x[i] - this.cx, this.y[i] - this.cy) < 30); }
+    }
+  }
+  placeFree(i, x0, x1, y0, y1) {
+    const r = this.r;
+    for (let k = 0; k < 40; k++) { const x = x0 + 12 + r() * (x1 - x0 - 24), y = y0 + 12 + r() * (y1 - y0 - 24); if (Math.hypot(x - this.bx, y - this.by) > this.bR + 14 && Math.hypot(x - this.gx, y - this.gy) > 20) { this.x[i] = x; this.y[i] = y; return; } }
+    this.x[i] = 20; this.y[i] = 20;
+  }
+  // component of A in the link graph (bridge task): conn[i]=1 and hop count
+  graph() {
+    const n = this.n, L2 = this.L * this.L; this.conn.fill(0); this.hop.fill(-1);
+    const q = []; for (let i = 0; i < n; i++) { const dx = this.x[i] - this.Ax, dy = this.y[i] - this.Ay; if (dx * dx + dy * dy <= L2) { this.conn[i] = 1; this.hop[i] = 1; q.push(i); } }
+    for (let h = 0; h < q.length; h++) { const i = q[h]; for (let j = 0; j < n; j++) if (!this.conn[j]) { const dx = this.x[i] - this.x[j], dy = this.y[i] - this.y[j]; if (dx * dx + dy * dy <= L2) { this.conn[j] = 1; this.hop[j] = this.hop[i] + 1; q.push(j); } } }
+  }
+  // observation for bot i, written in the task frame; also sets the frame axes used to turn actions back to world
+  observe(i, out) {
+    const n = this.n, x = this.x, y = this.y;
+    if (this.task === 'transport') {
+      const gdx = this.gx - this.bx, gdy = this.gy - this.by, gd = Math.hypot(gdx, gdy) || 1, ux = gdx / gd, uy = gdy / gd, vx = -uy, vy = ux;
+      this.fux[i] = ux; this.fuy[i] = uy;
+      const dx = x[i] - this.bx, dy = y[i] - this.by, d = Math.hypot(dx, dy);
+      out[0] = (dx * ux + dy * uy) / 100; out[1] = (dx * vx + dy * vy) / 100;
+      out[2] = this.touch[i] ? 1 : 0; out[3] = gd / 400;
+      out[4] = (this.vx[i] * ux + this.vy[i] * uy) / MAXV; out[5] = (this.vx[i] * vx + this.vy[i] * vy) / MAXV;
+      // two nearest neighbours
+      let b1 = 1e9, b2 = 1e9, i1 = -1, i2 = -1;
+      for (let j = 0; j < n; j++) if (j !== i) { const ddx = x[j] - x[i], ddy = y[j] - y[i], dd = ddx * ddx + ddy * ddy; if (dd < b1) { b2 = b1; i2 = i1; b1 = dd; i1 = j; } else if (dd < b2) { b2 = dd; i2 = j; } }
+      for (let k = 0; k < 2; k++) { const j = k ? i2 : i1; if (j < 0) { out[6 + 2 * k] = 0; out[7 + 2 * k] = 0; continue; } const ddx = x[j] - x[i], ddy = y[j] - y[i]; out[6 + 2 * k] = clamp((ddx * ux + ddy * uy) / 30, -2, 2); out[7 + 2 * k] = clamp((ddx * vx + ddy * vy) / 30, -2, 2); }
+      out[10] = (this.bvx * ux + this.bvy * uy) / 2; out[11] = (this.bvx * vx + this.bvy * vy) / 2;
+    } else if (this.task === 'bridge') {
+      const ux = this.ux, uy = this.uy, vx = -uy, vy = ux; this.fux[i] = ux; this.fuy[i] = uy;
+      const dx = x[i] - this.Ax, dy = y[i] - this.Ay;
+      out[0] = (dx * ux + dy * uy) / this.len; out[1] = (dx * vx + dy * vy) / 100; out[2] = this.conn[i];
+      // three nearest bots
+      const near = [-1, -1, -1], nd = [1e9, 1e9, 1e9];
+      for (let j = 0; j < n; j++) if (j !== i) { const ddx = x[j] - x[i], ddy = y[j] - y[i], dd = ddx * ddx + ddy * ddy; for (let k = 0; k < 3; k++) if (dd < nd[k]) { for (let m = 2; m > k; m--) { nd[m] = nd[m - 1]; near[m] = near[m - 1]; } nd[k] = dd; near[k] = j; break; } }
+      let cnt = 0;
+      for (let k = 0; k < 3; k++) { const j = near[k]; if (j < 0) { out[3 + 3 * k] = out[4 + 3 * k] = out[5 + 3 * k] = 0; continue; } const ddx = x[j] - x[i], ddy = y[j] - y[i]; out[3 + 3 * k] = clamp((ddx * ux + ddy * uy) / this.L, -2, 2); out[4 + 3 * k] = clamp((ddx * vx + ddy * vy) / this.L, -2, 2); out[5 + 3 * k] = this.conn[j]; if (nd[k] <= this.L * this.L) cnt++; }
+      out[12] = cnt / 3; out[13] = (this.vx[i] * ux + this.vy[i] * uy) / MAXV; out[14] = (this.vx[i] * vx + this.vy[i] * vy) / MAXV;
+    } else {
+      const dx = x[i] - this.cx, dy = y[i] - this.cy, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, vx = -uy, vy = ux; this.fux[i] = ux; this.fuy[i] = uy;
+      const R = this.ringR, th = Math.atan2(dy, dx), ideal = 2 * Math.PI * R / n;
+      let ccw = 1e9, cw = 1e9;
+      for (let j = 0; j < n; j++) if (j !== i) { const ex = x[j] - this.cx, ey = y[j] - this.cy, ed = Math.hypot(ex, ey); if (Math.abs(ed - R) > 45) continue; let a = Math.atan2(ey, ex) - th; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; if (a > 0 && a < ccw) ccw = a; if (a < 0 && -a < cw) cw = -a; }
+      out[0] = (d - R) / 100; out[1] = (this.vx[i] * ux + this.vy[i] * uy) / MAXV; out[2] = (this.vx[i] * vx + this.vy[i] * vy) / MAXV;
+      out[3] = ccw > 1e8 ? 3 : Math.min(3, ccw * R / ideal); out[4] = cw > 1e8 ? 3 : Math.min(3, cw * R / ideal); out[5] = Math.abs(d - R) < 14 ? 1 : 0;
+    }
+  }
+  // act: a is [n][2] in the bot's task frame. Returns nothing; updates state, score, done.
+  step(act) {
+    const n = this.n, x = this.x, y = this.y, vx = this.vx, vy = this.vy;
+    // frame -> world acceleration
+    for (let i = 0; i < n; i++) {
+      const ux = this.fux[i], uy = this.fuy[i], a0 = act[2 * i], a1 = act[2 * i + 1];
+      this.ax[i] = ux * a0 - uy * a1; this.ay[i] = uy * a0 + ux * a1;
+    }
+    if (this.task === 'transport') this.blockForces();
+    for (let i = 0; i < n; i++) {
+      vx[i] = vx[i] * 0.86 + this.ax[i] * 0.5; vy[i] = vy[i] * 0.86 + this.ay[i] * 0.5;
+      const s = Math.hypot(vx[i], vy[i]); if (s > MAXV) { vx[i] *= MAXV / s; vy[i] *= MAXV / s; }
+      x[i] += vx[i]; y[i] += vy[i];
+      if (x[i] < BOT_R) { x[i] = BOT_R; vx[i] = 0; } if (x[i] > W - BOT_R) { x[i] = W - BOT_R; vx[i] = 0; }
+      if (y[i] < BOT_R) { y[i] = BOT_R; vy[i] = 0; } if (y[i] > H - BOT_R) { y[i] = H - BOT_R; vy[i] = 0; }
+    }
+    // soft collisions between bots
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const dx = x[j] - x[i], dy = y[j] - y[i], d2 = dx * dx + dy * dy, m = 2 * BOT_R;
+      if (d2 < m * m && d2 > 1e-6) { const d = Math.sqrt(d2), p = (m - d) * 0.5 / d; x[i] -= dx * p; y[i] -= dy * p; x[j] += dx * p; y[j] += dy * p; }
+    }
+    if (this.task === 'transport') this.afterTransport(); else if (this.task === 'bridge') this.afterBridge(); else this.afterSurround();
+    this.t++; if (this.t >= TASKS[this.task].steps || this.success) this.done = true;
+  }
+  blockForces() {
+    const n = this.n; let Fx = 0, Fy = 0; this.touch.fill(0);
+    for (let i = 0; i < n; i++) {
+      const dx = this.bx - this.x[i], dy = this.by - this.y[i], d = Math.hypot(dx, dy) || 1;
+      if (d < this.bR + BOT_R + 2) { this.touch[i] = 1; const nx = dx / d, ny = dy / d, push = Math.max(0, this.ax[i] * nx + this.ay[i] * ny); Fx += push * nx; Fy += push * ny; }
+    }
+    const F = Math.hypot(Fx, Fy), thr = 4.0;
+    if (F > thr) { const k = 0.25 * (F - thr) / F; this.bvx = this.bvx * 0.7 + Fx * k; this.bvy = this.bvy * 0.7 + Fy * k; } else { this.bvx *= 0.4; this.bvy *= 0.4; }
+    this.bx = clamp(this.bx + this.bvx, this.bR, W - this.bR); this.by = clamp(this.by + this.bvy, this.bR, H - this.bR);
+  }
+  afterTransport() {
+    const n = this.n; let tc = 0;
+    for (let i = 0; i < n; i++) { const dx = this.x[i] - this.bx, dy = this.y[i] - this.by, d = Math.hypot(dx, dy) || 1, m = this.bR + BOT_R; if (d < m) { this.x[i] = this.bx + dx / d * m; this.y[i] = this.by + dy / d * m; const vn = this.vx[i] * dx / d + this.vy[i] * dy / d; if (vn < 0) { this.vx[i] -= vn * dx / d; this.vy[i] -= vn * dy / d; } } if (this.touch[i]) tc++; }
+    const D = Math.hypot(this.gx - this.bx, this.gy - this.by);
+    this.score += (this.prevD - D) / this.d0 + 0.0004 * Math.min(tc, 8) / 8; this.prevD = D;
+    if (D < 22) { this.success = true; this.tSuccess = this.t; this.score += 1 + (1 - this.t / TASKS.transport.steps); }
+  }
+  afterBridge() {
+    this.graph(); const n = this.n; let best = 0, reach = false;
+    for (let i = 0; i < n; i++) if (this.conn[i]) { const p = (this.x[i] - this.Ax) * this.ux + (this.y[i] - this.Ay) * this.uy; if (p > best) best = p; if (Math.hypot(this.x[i] - this.Bx, this.y[i] - this.By) <= this.L) reach = true; }
+    this.cov = Math.min(1, Math.max(0, best) / (this.len - this.L));
+    this.score += this.cov / TASKS.bridge.steps;
+    if (reach) { this.success = true; this.tSuccess = this.t; this.score += 1 + (1 - this.t / TASKS.bridge.steps); }
+  }
+  afterSurround() {
+    const n = this.n, bins = new Uint8Array(n); let c = 0;
+    for (let i = 0; i < n; i++) { const dx = this.x[i] - this.cx, dy = this.y[i] - this.cy; if (Math.abs(Math.hypot(dx, dy) - this.ringR) < 14) { let a = Math.atan2(dy, dx); if (a < 0) a += 2 * Math.PI; const b = Math.min(n - 1, Math.floor(a / (2 * Math.PI) * n)); if (!bins[b]) { bins[b] = 1; c++; } } }
+    this.cov = c / n; this.score += this.cov / TASKS.surround.steps;
+    if (this.cov >= 0.85 && this.t > 30) { this.success = true; this.tSuccess = this.t; this.score += 0.5 * (1 - this.t / TASKS.surround.steps); }
+  }
+}
+
+// ---------- running policies ----------
+function runEpisode(task, params, n, seed, opt, rec) {
+  const env = new Env(task, n, seed, opt), nin = TASKS[task].nin, act = new Float32Array(2 * n), o = new Float32Array(2);
+  if (env.task === 'bridge') env.graph();
+  while (!env.done) {
+    for (let i = 0; i < n; i++) { env.observe(i, env.obsBuf); if (params) { forward(params, nin, env.obsBuf, o); act[2 * i] = o[0]; act[2 * i + 1] = o[1]; } else { act[2 * i] = 0; act[2 * i + 1] = 0; } }
+    env.step(act); if (rec) rec(env);
+  }
+  return env;
+}
+function fitness(task, params, n, seeds) { let s = 0; for (const sd of seeds) s += runEpisode(task, params, n, sd).score; return s / seeds.length; }
+
+// ---------- evolution strategy (OpenAI-ES with antithetic sampling, centred ranks, Adam) ----------
+class ES {
+  constructor(task, params, opts) {
+    this.task = task; this.theta = Float32Array.from(params); this.P = params.length; this.gen = 0;
+    this.o = Object.assign({ pairs: 12, sigma: 0.12, lr: 0.04, n: 20, episodes: 2 }, opts || {});
+    this.m = new Float32Array(this.P); this.v = new Float32Array(this.P); this.r = mulberry32(12345 + (opts && opts.seed || 0)); this.history = [];
+  }
+  step() {
+    const { pairs, sigma, lr, n, episodes } = this.o, P = this.P, r = this.r;
+    const eps = [], rets = [];
+    const seeds = []; for (let e = 0; e < episodes; e++) seeds.push(1000 + this.gen * 7 + e * 101);
+    for (let k = 0; k < pairs; k++) {
+      const e = new Float32Array(P); for (let i = 0; i < P; i++) e[i] = gauss(r);
+      const tp = new Float32Array(P), tm = new Float32Array(P);
+      for (let i = 0; i < P; i++) { tp[i] = this.theta[i] + sigma * e[i]; tm[i] = this.theta[i] - sigma * e[i]; }
+      eps.push(e); rets.push(fitness(this.task, tp, n, seeds), fitness(this.task, tm, n, seeds));
+    }
+    // centred ranks
+    const idx = rets.map((v, i) => i).sort((a, b) => rets[a] - rets[b]), u = new Float32Array(rets.length);
+    idx.forEach((id, rank) => { u[id] = rank / (rets.length - 1) - 0.5; });
+    const g = new Float32Array(P);
+    for (let k = 0; k < pairs; k++) { const w = u[2 * k] - u[2 * k + 1]; const e = eps[k]; for (let i = 0; i < P; i++) g[i] += w * e[i]; }
+    for (let i = 0; i < P; i++) g[i] /= (2 * pairs * sigma);
+    const b1 = 0.9, b2 = 0.999, t = this.gen + 1;
+    for (let i = 0; i < P; i++) {
+      this.m[i] = b1 * this.m[i] + (1 - b1) * g[i]; this.v[i] = b2 * this.v[i] + (1 - b2) * g[i] * g[i];
+      this.theta[i] += lr * (this.m[i] / (1 - Math.pow(b1, t))) / (Math.sqrt(this.v[i] / (1 - Math.pow(b2, t))) + 1e-8);
+      this.theta[i] = clamp(this.theta[i], -4, 4);
+    }
+    this.gen++;
+    const mean = rets.reduce((a, b) => a + b, 0) / rets.length, best = Math.max(...rets);
+    this.history.push({ gen: this.gen, mean, best });
+    return { gen: this.gen, mean, best };
+  }
+}
+
+if (typeof module !== 'undefined') module.exports = { W, H, BOT_R, TASKS, Env, ES, runEpisode, fitness, initParams, forward, paramCount, mulberry32 };
+
+</script>
+<script>
+(() => {
+'use strict';
+const PRE = {"transport":[2.4288,-0.2051,0.0294,0.333,-0.4095,0.6461,-0.8278,-0.6265,0.116,0.3901,0.2715,-0.3381,-1.5174,0.3058,1.5562,0.047,0.6847,-0.6479,-0.3797,-0.26,0.516,-0.4577,0.2287,0.2279,-0.5388,-0.7203,0.4493,0.2692,0.5327,0.0876,0.4459,-0.6618,0.9303,-0.9554,0.3533,0.3905,0.4403,-0.4256,0.5113,-0.7174,0.2195,-0.6793,0.2686,-0.0487,-0.1243,0.0366,0.7079,1.1489,0.7837,0.3221,-0.1859,0.3884,0.3695,0.715,-0.4893,0.6568,-0.1396,0.4017,1.0273,-0.0124,-0.9342,-1.0198,-0.4021,0.5574,-0.3101,-0.5694,0.1636,0.0153,0.3163,0.4404,0.1931,0.3152,-1.0357,0.2231,-0.4311,1.1027,-0.187,0.2861,0.6045,0.595,-1.1229,-0.1876,-0.5442,0.7218,-0.1495,-0.5646,0.2088,0.3359,-1.3257,1.4354,0.4204,0,-0.515,0.5739,0.5308,0.0076,0.3519,-1.0035,0.1619,-0.519,-0.4413,-0.2019,-0.1454,-0.1576,0.1804,-0.3916,-0.9184,0.6558,-1.8931,-0.1878,0.6296,-0.2527,-0.3732,0.8311,-0.5924,0.3949,-0.2323,0.4529,0.2668,-0.0416,1.1608,1.5913,-0.1478,0.3796,0.6101,0.1411,0.158,0.4307,-0.0113,-1.054,0.1489,-0.579,-0.977,-2.3338,-0.2111,0.4157,0.0117,-0.5889,-0.034,0.1995,-0.1205,0.0166,-0.0213,1.3689,0.7663,1.2245,-1.08,0.7911,0.7563,-0.0431,0.2855,1.0845,-0.7405,0.6931,-0.5683,-1.065,1.0113,-2.0617,-0.0313,-0.1178,0.6251,0.1585,0.4405,0.5966,-0.3394,-0.2848,-1.1893,0.3627,-0.7789,0.2162,-0.076,-0.5104,-0.18,-0.5664,0.0466,0.643,0.1662,-0.3029,0.5307,-0.141,-0.1929,-0.8091,-1.7897,1.6903,-0.0971,-0.3251,0.1481,0.1828,-0.0211,-0.4422,-0.6107,0.3748,-0.1554,-0.1215,-0.783,-0.6433,-1.0688,0.1807,0.2734,0.3401,-0.1604,0.6397,-0.0485,0.3556,-0.1343,0.4238,-0.8809,2.1146,-0.6842,1.2202,-0.547,-0.3332],"bridge":[0.8582,0.585,0.1455,-0.9865,-0.4372,0.8971,-0.3758,0.1557,-1.2622,0.4176,0.2108,0.1103,0.1045,-0.0162,0.7691,0.0413,0.48,0.2622,-1.0557,0.1068,0.1453,0.1927,0.0349,0.5535,0.2396,0.405,0.0747,-0.0356,-0.3312,0.621,0.06,0.5179,0.4671,-0.6211,0.0406,-0.578,0.3779,-0.772,-0.6627,-0.6861,0.3281,0.407,-1.2815,0.0471,0.2729,-0.4711,0.6411,-0.6342,1.502,0.4617,-0.3377,1.5413,0.6364,0.0653,0.9693,-0.9912,0.1828,0.6652,-0.6703,0.4638,0.4509,-0.1859,-0.2866,0.9145,-0.9775,-0.3374,0.5733,0.1344,0.0443,0.6746,0.205,0.5187,-0.1975,0.2551,-0.7326,-0.5043,0.1493,0.4717,0.0707,-0.514,-0.035,-0.3179,0.6887,0.4764,-0.7687,-0.3505,0.4731,0.2074,0.2199,0.4665,0.4856,-1.1727,-0.4364,0.7194,1.0546,-0.7648,0.9397,0.0081,-0.1094,-0.0195,-0.2959,0.802,-0.3787,0.2634,0.6702,0.003,-0.6878,-0.727,-0.2916,0.5398,-0.0912,0.1857,0.0585,0.3898,0.1587,0.419,-0.7931,-0.244,0.5415,-0.4433,-0.0261,-0.9714,-0.6566,0.5151,0.4122,0.4446,-0.2948,-0.2538,0.8333,-0.4075,0.4064,-0.3192,0.0555,0.4031,-0.9089,-0.289,-0.5337,0.1384,0.6322,-0.5154,-0.8077,0.9157,-0.3946,0.9802,0.7338,0.1951,-0.7073,0.3219,-0.5146,0.848,0.2146,1.581,-0.7617,0.6833,-0.9305,0.0174,0.487,-0.3718,0.2918,0.0777,-0.7797,0.3949,-0.0494,0.1446,-0.1465,-0.7003,0.6635,0.8138,-1.0349,-0.1366,-0.8306,-0.4433,-0.4759,0.4388,-1.1121,-0.2793,0.4185,0.5401,-0.6461,0.2659,-0.411,0.1729,-1.2985,0.3646,-0.0041,-0.3368,-0.4912,-1.1154,-0.1235,-1.5383,-0.8917,-0.4448,-0.7764,-0.4161,-0.6196,-1.1319,0.3365,0.1556,-0.221,-0.3517,-0.6183,-0.4028,-0.1528,-0.213,-0.0079,-0.1856,0.744,-0.5598,-0.4481,0.2032,0.9076,0.0328,0.8729,0.1001,0.119,-0.6888,-0.497,1.2195,0.2365,0.3269,0.2982,-0.7444,-0.9767,0.3115,0.5175,-0.3761,0.501,-1.6857,-0.5353,0.2705,-0.412,0.7817,0.1487,-0.748,-1.2071,1.7493,-0.947,-0.1942,-0.5398,0.0142,-0.3583,0.6212,0.1491,0.1255,0.8009,0.1863,0.3551,-0.2347,-1.5893,-0.3371,-0.3194,-0.8502,-0.6578,0.3104],"surround":[-0.8401,-0.2022,-0.1941,-0.1828,0.5188,0.1786,-0.5548,0.6614,-0.1562,0.5927,-0.4235,-0.2284,-0.556,-0.2071,-0.4576,0.3884,0.2234,-0.5334,-0.0941,-0.1676,0.8709,0.4997,-0.4133,-0.6734,-0.42,-0.0231,-0.829,-0.6881,0.1241,0.9862,-0.129,0.5388,-0.5525,-0.0882,-0.6862,-0.0303,-0.1055,0.5244,-0.0065,-0.571,0.5917,0.1421,-0.4187,0.017,-1.0344,0.1645,-0.0213,-0.0207,0.2326,-0.4082,0.0913,-0.4447,0.8022,-0.4235,0.1694,0.4646,0.0622,0.4636,0.0892,0.2346,0.2269,0.4081,0.1401,-0.1939,-0.1412,-1.3949,-0.1295,-0.1888,0.622,-0.6041,-0.197,0.2484,-0.2197,0.3405,-0.4102,-0.1599,-0.7155,-0.473,0.1328,-0.1021,-0.108,0.0432,0.871,-0.0246,-0.1253,-0.1489,-0.18,0.4205,-0.4326,0.1798,-0.6306,-0.4871,0.2949,0.0248,1.0029,0.1684,0.0653,0.0077,0.3099,0.1157,0.0161,-0.0615,0.1861,-0.3084,0.0654,-0.0204,-0.4868,0.1845,-1.3459,0.0725,0.3194,-0.1696,-0.0714,0.5901,-0.0417,-0.093,-0.0772,0.2221,-0.049,0.6104,-0.5179,0.5772,-0.9252,-0.5931,0.715,-0.2495,-0.4441,-0.175]};
+const $ = id => document.getElementById(id);
+const cv = $('arena'), ctx = cv.getContext('2d'), K = cv.width / W;
+const INFO = {
+  transport: { hint: 'Click the arena to move the goal.', legend: [['#ffb347', 'bot pushing the block'], ['#5eead4', 'bot on its way'], ['#c7d4e0', 'heavy block'], ['#5eead4', 'goal']] },
+  bridge: { hint: 'Click the arena to move the right-hand tower.', legend: [['#ffb347', 'bot linked to the left tower'], ['#5eead4', 'bot not yet linked'], ['#c7d4e0', 'towers (dashed circle: radio range)']] },
+  surround: { hint: 'Click the arena to move the target.', legend: [['#ffb347', 'bot on the ring'], ['#5eead4', 'bot off the ring'], ['#c7d4e0', 'target and ring band']] },
+};
+const S = { task: 'transport', brain: 'pre', n: 20, speed: 2, seed: 1, opt: {}, env: null, hold: 0, paused: false, ok: 0, tot: 0, mine: {}, hist: {}, training: false, base: {}, episodeSteps: [] };
+let worker = null;
+
+// ---------- brains ----------
+function params(task) {
+  if (S.brain === 'pre') return Float32Array.from(PRE[task]);
+  if (S.brain === 'mine') return S.mine[task] || null;
+  return initParams(TASKS[task].nin, mulberry32(7));
+}
+function newEpisode(keepOpt) {
+  if (!keepOpt) S.seed++;
+  S.env = new Env(S.task, S.n, S.seed, S.opt); if (S.task === 'bridge') S.env.graph();
+  S.hold = 0; S.p = params(S.task); $('result').textContent = ''; $('result').className = 'result';
+}
+function setTask(t) { S.task = t; S.opt = {}; S.ok = 0; S.tot = 0; document.querySelectorAll('#tasks button').forEach(b => b.classList.toggle('on', b.dataset.task === t));
+  $('clickHint').textContent = INFO[t].hint; $('legend').innerHTML = INFO[t].legend.map(l => `<span><i style="background:${l[0]}"></i>${l[1]}</span>`).join('');
+  S.n = +$('rN').value; if (t === 'bridge' && S.n < 16) { /* keep what the user chose */ }
+  drawChart(); newEpisode(); }
+function setBrain(b) { S.brain = b; S.ok = 0; S.tot = 0; document.querySelectorAll('#brains button').forEach(x => x.classList.toggle('on', x.dataset.brain === b)); newEpisode(true); }
+
+// ---------- stepping ----------
+const act = () => new Float32Array(2 * S.n), o2 = new Float32Array(2);
+function stepEpisode() {
+  const env = S.env; if (env.done) { if (++S.hold > 70) { newEpisode(); } return; }
+  const n = env.n, nin = TASKS[env.task].nin, a = stepEpisode.a && stepEpisode.a.length === 2 * n ? stepEpisode.a : (stepEpisode.a = new Float32Array(2 * n));
+  for (let i = 0; i < n; i++) {
+    env.observe(i, env.obsBuf);
+    if (S.p) { forward(S.p, nin, env.obsBuf, o2); a[2 * i] = o2[0]; a[2 * i + 1] = o2[1]; } else { a[2 * i] = 0; a[2 * i + 1] = 0; }
+  }
+  env.step(a);
+  if (env.done) { S.tot++; if (env.success) { S.ok++; } const r = $('result'); r.textContent = env.success ? 'Success in ' + env.tSuccess + ' steps' : 'Timed out'; r.className = 'result ' + (env.success ? 'ok' : 'no'); }
+}
+
+// ---------- drawing ----------
+function drawBot(x, y, col, glow) {
+  if (glow) { ctx.fillStyle = col.replace('1)', '0.18)'); ctx.beginPath(); ctx.arc(x, y, BOT_R * 1.5 + 4, 0, 7); ctx.fill(); }
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, BOT_R * 1.5, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(8,12,17,0.75)'; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, 7); ctx.fill();
+}
+const AMB = 'rgba(255,179,71,1)', TEAL = 'rgba(94,234,212,1)';
+function draw() {
+  const env = S.env, n = env.n; ctx.setTransform(K, 0, 0, K, 0, 0);
+  ctx.fillStyle = '#060a0f'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(100,140,180,0.08)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= W; x += 50) { ctx.moveTo(x, 0); ctx.lineTo(x, H); } for (let y = 0; y <= H; y += 50) { ctx.moveTo(0, y); ctx.lineTo(W, y); } ctx.stroke();
+  const x = env.x, y = env.y;
+  if (env.task === 'transport') {
+    ctx.strokeStyle = 'rgba(94,234,212,0.35)'; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(env.bx, env.by); ctx.lineTo(env.gx, env.gy); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = TEAL; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(env.gx, env.gy, 22, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#1b2735'; ctx.strokeStyle = '#c7d4e0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(env.bx, env.by, env.bR, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(199,212,224,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); for (let k = -16; k <= 16; k += 8) { ctx.moveTo(env.bx - 17, env.by + k + 9); ctx.lineTo(env.bx + 17, env.by + k - 9); } ctx.stroke();
+  } else if (env.task === 'bridge') {
+    for (const [px, py] of [[env.Ax, env.Ay], [env.Bx, env.By]]) {
+      ctx.strokeStyle = 'rgba(94,234,212,0.28)'; ctx.setLineDash([4, 5]); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(px, py, env.L, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#1b2735'; ctx.strokeStyle = '#c7d4e0'; ctx.lineWidth = 2; ctx.fillRect(px - 9, py - 9, 18, 18); ctx.strokeRect(px - 9, py - 9, 18, 18);
+    }
+    ctx.lineWidth = 1.4; ctx.beginPath();
+    const L2 = env.L * env.L;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const dx = x[i] - x[j], dy = y[i] - y[j]; if (dx * dx + dy * dy <= L2 && env.conn[i] && env.conn[j]) { ctx.moveTo(x[i], y[i]); ctx.lineTo(x[j], y[j]); } }
+    for (let i = 0; i < n; i++) if (env.conn[i] && Math.hypot(x[i] - env.Ax, y[i] - env.Ay) <= env.L) { ctx.moveTo(x[i], y[i]); ctx.lineTo(env.Ax, env.Ay); }
+    for (let i = 0; i < n; i++) if (env.conn[i] && Math.hypot(x[i] - env.Bx, y[i] - env.By) <= env.L) { ctx.moveTo(x[i], y[i]); ctx.lineTo(env.Bx, env.By); }
+    ctx.strokeStyle = 'rgba(255,179,71,0.7)'; ctx.stroke();
+  } else {
+    ctx.strokeStyle = 'rgba(94,234,212,0.12)'; ctx.lineWidth = 28; ctx.beginPath(); ctx.arc(env.cx, env.cy, env.ringR, 0, 7); ctx.stroke();
+    ctx.strokeStyle = 'rgba(94,234,212,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.arc(env.cx, env.cy, env.ringR, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#c7d4e0'; ctx.beginPath(); ctx.arc(env.cx, env.cy, 7, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(199,212,224,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(env.cx, env.cy, 13, 0, 7); ctx.stroke();
+  }
+  // faint magnetic cohesion between touching neighbours
+  ctx.strokeStyle = 'rgba(94,234,212,0.18)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const dx = x[i] - x[j], dy = y[i] - y[j]; if (dx * dx + dy * dy < 15 * 15) { ctx.moveTo(x[i], y[i]); ctx.lineTo(x[j], y[j]); } }
+  ctx.stroke();
+  for (let i = 0; i < n; i++) {
+    let hot = false;
+    if (env.task === 'transport') hot = !!env.touch[i]; else if (env.task === 'bridge') hot = !!env.conn[i]; else hot = Math.abs(Math.hypot(x[i] - env.cx, y[i] - env.cy) - env.ringR) < 14;
+    drawBot(x[i], y[i], hot ? AMB : TEAL, hot);
+  }
+}
+function updateText() {
+  const env = S.env, T = TASKS[env.task];
+  $('badge').innerHTML = `step <b>${env.t}</b> / ${T.steps} &nbsp; score <b>${env.score.toFixed(2)}</b>`;
+  const rows = [['brain', { none: 'untrained', pre: 'trained', mine: 'yours' }[S.brain]], ['swarm', S.n + ' bots'], ['episodes won', S.ok + ' / ' + S.tot]];
+  if (env.task === 'transport') { let k = 0; for (let i = 0; i < env.n; i++) k += env.touch[i]; rows.push(['bots pushing', k], ['to goal', Math.round(Math.hypot(env.gx - env.bx, env.gy - env.by)) + ' px']); }
+  else if (env.task === 'bridge') { let k = 0; for (let i = 0; i < env.n; i++) k += env.conn[i]; rows.push(['linked bots', k], ['span covered', Math.round(env.cov * 100) + '%']); }
+  else rows.push(['ring filled', Math.round(env.cov * 100) + '%'], ['on the ring', (() => { let k = 0; for (let i = 0; i < env.n; i++) if (Math.abs(Math.hypot(env.x[i] - env.cx, env.y[i] - env.cy) - env.ringR) < 14) k++; return k; })()]);
+  $('stats').innerHTML = rows.map(r => `<div><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+}
+
+// ---------- training chart ----------
+function baseScore(task) {
+  if (S.base[task] == null) { let s = 0; const seeds = [5, 6, 7, 8, 9, 10]; for (const sd of seeds) s += runEpisode(task, Float32Array.from(PRE[task]), 20, sd).score; S.base[task] = s / seeds.length; }
+  return S.base[task];
+}
+function drawChart() {
+  const c = $('chart'), g = c.getContext('2d'), w = c.width, h = c.height; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(100,140,180,0.14)'; g.lineWidth = 1; for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, h * i / 4); g.lineTo(w, h * i / 4); g.stroke(); }
+  const hist = S.hist[S.task] || [], ref = baseScore(S.task);
+  const mx = Math.max(ref * 1.15, ...hist.map(p => p.best), 0.3), X = i => 6 + i / Math.max(hist.length - 1, 24) * (w - 12), Y = v => h - 14 - v / mx * (h - 28);
+  g.setLineDash([6, 6]); g.strokeStyle = 'rgba(255,255,255,0.3)'; g.beginPath(); g.moveTo(0, Y(ref)); g.lineTo(w, Y(ref)); g.stroke(); g.setLineDash([]);
+  g.fillStyle = '#8093a6'; g.font = '20px IBM Plex Mono, monospace'; g.textBaseline = 'bottom'; g.fillText('pre-trained brain', 8, Y(ref) - 4);
+  g.textAlign = 'right'; g.fillText(hist.length ? 'round ' + hist.length : 'no teaching yet', w - 8, h - 2); g.textAlign = 'left';
+  if (hist.length < 2) return;
+  for (const [key, col] of [['mean', 'rgba(94,234,212,1)'], ['best', 'rgba(255,179,71,1)']]) {
+    g.beginPath(); hist.forEach((p, i) => i ? g.lineTo(X(i), Y(p[key])) : g.moveTo(X(i), Y(p[key]))); g.strokeStyle = col; g.lineWidth = 2.5; g.stroke();
+  }
+}
+
+// ---------- teaching in a background worker ----------
+function startTeaching() {
+  stopTeaching();
+  const task = S.task; S.hist[task] = []; S.mine[task] = null; setBrain('mine');
+  const src = $('coreSrc').textContent + `
+let es=null,run=false;
+function loop(){ if(!run) return; const r=es.step(); postMessage({gen:r.gen,mean:r.mean,best:r.best,theta:Array.from(es.theta)}); setTimeout(loop,0); }
+onmessage=e=>{ const m=e.data; if(m.cmd==='start'){ es=new ES(m.task, initParams(TASKS[m.task].nin, mulberry32(m.seed)), {n:m.n}); run=true; loop(); } else if(m.cmd==='stop'){ run=false; } };`;
+  try { worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); }
+  catch (e) { $('trainNote').textContent = 'Background teaching is not available in this browser.'; return; }
+  worker.onmessage = e => {
+    const m = e.data; (S.hist[task] = S.hist[task] || []).push({ mean: m.mean, best: m.best });
+    S.mine[task] = Float32Array.from(m.theta);
+    if (S.task === task) { drawChart(); if (S.brain === 'mine' && S.env.done) S.p = S.mine[task]; if (S.brain === 'mine' && !S.env.done && S.env.t === 0) S.p = S.mine[task]; }
+    $('trainNote').textContent = `Round ${m.gen}: best score ${m.best.toFixed(2)}. Trained brain scores about ${baseScore(task).toFixed(2)}.`;
+  };
+  worker.postMessage({ cmd: 'start', task, seed: 100 + Math.floor(Math.random() * 900), n: 20 });
+  S.training = true; $('btnLearn').disabled = true; $('btnStop').disabled = false; newEpisode(true);
+}
+function stopTeaching() { if (worker) { worker.postMessage({ cmd: 'stop' }); worker.terminate(); worker = null; } S.training = false; $('btnLearn').disabled = false; $('btnStop').disabled = true; }
+
+// ---------- controls ----------
+document.querySelectorAll('#tasks button').forEach(b => b.addEventListener('click', () => { stopTeaching(); setTask(b.dataset.task); }));
+document.querySelectorAll('#brains button').forEach(b => b.addEventListener('click', () => { if (b.dataset.brain === 'mine' && !S.mine[S.task]) { $('trainNote').textContent = 'Press Teach from scratch first.'; return; } setBrain(b.dataset.brain); }));
+$('btnLearn').addEventListener('click', startTeaching);
+$('btnStop').addEventListener('click', () => { stopTeaching(); $('trainNote').textContent = 'Teaching stopped. Your brain is kept.'; });
+$('btnNew').addEventListener('click', () => { S.opt = {}; newEpisode(); });
+$('btnPause').addEventListener('click', () => { S.paused = !S.paused; $('btnPause').textContent = S.paused ? 'Resume' : 'Pause'; });
+$('rN').addEventListener('input', e => { S.n = +e.target.value; $('oN').textContent = S.n; newEpisode(true); });
+$('rS').addEventListener('input', e => { S.speed = +e.target.value; $('oS').textContent = S.speed + 'x'; });
+cv.addEventListener('pointerup', e => {
+  const r = cv.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W, py = (e.clientY - r.top) / r.height * H;
+  if (S.task === 'transport') S.opt.goal = { x: clamp(px, 40, W - 40), y: clamp(py, 40, H - 40) };
+  else if (S.task === 'bridge') S.opt.B = { x: clamp(px, 450, W - 40), y: clamp(py, 40, H - 40) };
+  else S.opt.center = { x: clamp(px, 150, W - 150), y: clamp(py, 130, H - 130) };
+  newEpisode(true);
+});
+
+// ---------- loop ----------
+setTask('transport');
+function loop() {
+  if (!S.paused) for (let k = 0; k < S.speed; k++) stepEpisode();
+  draw(); updateText(); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.__swarm = { S, stepEpisode, newEpisode, setTask, setBrain, startTeaching, stopTeaching };
+})();
+</script>
+
+</body></html>
